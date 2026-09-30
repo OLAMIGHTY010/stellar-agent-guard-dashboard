@@ -25,6 +25,7 @@ import { GuardTelemetryListener, guardEventsFromDiagnostics } from "stellar-agen
 import type { GuardEvent } from "stellar-agent-guard-sdk";
 import type { rpc } from "@stellar/stellar-sdk";
 import { NETWORK } from "./network.ts";
+import { withTimeout } from "./timeout.ts";
 
 export interface TelemetryPage {
   events: GuardEvent[];
@@ -61,18 +62,20 @@ export class GuardFeed {
 
   /** One page of committed ledger events. Advances the cursor. */
   async pollOnce(limit = 50): Promise<TelemetryPage> {
-    const params: { cursor?: string; limit: number; startLedger?: number } = { limit };
-    if (this.cursor) {
-      params.cursor = this.cursor;
-    } else if (this.latestLedger !== null) {
-      params.startLedger = this.latestLedger;
-    }
-    const page = await this.listener.poll(params);
-    // A page with no events still advances the ledger pointer, so the next poll
-    // does not re-scan a stretch of empty ledgers.
-    this.latestLedger = Math.max(this.latestLedger ?? 0, page.latestLedger);
-    if (page.cursor) this.cursor = page.cursor;
-    return page;
+    return await withTimeout(async () => {
+      const params: { cursor?: string; limit: number; startLedger?: number } = { limit };
+      if (this.cursor) {
+        params.cursor = this.cursor;
+      } else if (this.latestLedger !== null) {
+        params.startLedger = this.latestLedger;
+      }
+      const page = await this.listener.poll(params);
+      // A page with no events still advances the ledger pointer, so the next poll
+      // does not re-scan a stretch of empty ledgers.
+      this.latestLedger = Math.max(this.latestLedger ?? 0, page.latestLedger);
+      if (page.cursor) this.cursor = page.cursor;
+      return page;
+    });
   }
 
   /** Where the feed currently is, for display. */

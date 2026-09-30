@@ -22,6 +22,7 @@ import {
 import { NETWORK, PHASE1_ARTIFACT, READ_SOURCE_FALLBACK } from "./network.ts";
 import { bytesToHex, guardStorageLedgerKeys, hashToHex, sha256, sha256Hex } from "./scval.ts";
 import type { GuardStatus, PolicyConfig } from "stellar-agent-guard-sdk";
+import { withTimeout } from "./timeout.ts";
 
 export function createServer(rpcUrl: string = NETWORK.rpcUrl): rpc.Server {
   return new rpc.Server(rpcUrl);
@@ -45,26 +46,28 @@ export async function readContract<T = unknown>(
   source: string = READ_SOURCE_FALLBACK,
 ): Promise<ReadResult<T>> {
   try {
-    const account = new Account(source, "0");
-    const tx = new TransactionBuilder(account, {
-      fee: "100",
-      networkPassphrase: NETWORK.passphrase,
-    })
-      .addOperation(
-        Operation.invokeContractFunction({ contract: contractId, function: fn, args }),
-      )
-      .setTimeout(30)
-      .build();
-    const simulation = await server.simulateTransaction(tx);
-    if (rpc.Api.isSimulationError(simulation)) {
-      return { ok: false, error: stringifyError(simulation.error) };
-    }
-    const success = simulation as rpc.Api.SimulateTransactionSuccessResponse;
-    const retval = success.result?.retval;
-    if (retval === undefined) {
-      return { ok: false, error: `simulation of ${fn}() returned no value` };
-    }
-    return { ok: true, value: scValToNative(retval) as T };
+    return await withTimeout(async () => {
+      const account = new Account(source, "0");
+      const tx = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: NETWORK.passphrase,
+      })
+        .addOperation(
+          Operation.invokeContractFunction({ contract: contractId, function: fn, args }),
+        )
+        .setTimeout(30)
+        .build();
+      const simulation = await server.simulateTransaction(tx);
+      if (rpc.Api.isSimulationError(simulation)) {
+        return { ok: false, error: stringifyError(simulation.error) };
+      }
+      const success = simulation as rpc.Api.SimulateTransactionSuccessResponse;
+      const retval = success.result?.retval;
+      if (retval === undefined) {
+        return { ok: false, error: `simulation of ${fn}() returned no value` };
+      }
+      return { ok: true, value: scValToNative(retval) as T };
+    });
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -90,29 +93,31 @@ export async function readPersistentEntry<T = unknown>(
   dataKeyName: string,
 ): Promise<ReadResult<T | null>> {
   try {
-    const key = xdr.LedgerKey.contractData(
-      new xdr.LedgerKeyContractData({
-        contract: new Address(contractId).toScAddress(),
-        key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(dataKeyName)]),
-        durability: xdr.ContractDataDurability.persistent,
-      }),
-    );
-    const response = await server.getLedgerEntries(key);
-    const entry = response.entries[0] as unknown as {
-      val?: { contractData?: { val?: Xdr.ScVal } | (() => { val?: () => Xdr.ScVal }) };
-    } | undefined;
-    if (!entry?.val) return { ok: true, value: null };
-    // The decoded XDR wrapper exposes `contractData` as a plain property in this
-    // SDK build, but keep the callable shape working too rather than pinning to
-    // one internal representation.
-    const contractData =
-      typeof entry.val.contractData === "function"
-        ? entry.val.contractData()
-        : entry.val.contractData;
-    const scval =
-      typeof contractData?.val === "function" ? contractData.val() : contractData?.val;
-    if (!scval) return { ok: true, value: null };
-    return { ok: true, value: scValToNative(scval) as T };
+    return await withTimeout(async () => {
+      const key = xdr.LedgerKey.contractData(
+        new xdr.LedgerKeyContractData({
+          contract: new Address(contractId).toScAddress(),
+          key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(dataKeyName)]),
+          durability: xdr.ContractDataDurability.persistent,
+        }),
+      );
+      const response = await server.getLedgerEntries(key);
+      const entry = response.entries[0] as unknown as {
+        val?: { contractData?: { val?: Xdr.ScVal } | (() => { val?: () => Xdr.ScVal }) };
+      } | undefined;
+      if (!entry?.val) return { ok: true, value: null };
+      // The decoded XDR wrapper exposes `contractData` as a plain property in this
+      // SDK build, but keep the callable shape working too rather than pinning to
+      // one internal representation.
+      const contractData =
+        typeof entry.val.contractData === "function"
+          ? entry.val.contractData()
+          : entry.val.contractData;
+      const scval =
+        typeof contractData?.val === "function" ? contractData.val() : contractData?.val;
+      if (!scval) return { ok: true, value: null };
+      return { ok: true, value: scValToNative(scval) as T };
+    });
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -153,19 +158,21 @@ export async function verifyWasmIdentity(
   server: rpc.Server,
   contractId: string,
 ): Promise<WasmIdentity> {
-  const instance = (await server.getContractInstance(contractId)) as unknown as {
-    executable?: { wasmHash?: unknown };
-  };
-  const reportedWasmHash = hashToHex(instance.executable?.wasmHash);
-  const wasm = await server.getContractWasmByContractId(contractId);
-  const bytes = toBytes(wasm);
-  const fetchedSha256 = await sha256Hex(bytes);
-  return {
-    reportedWasmHash,
-    fetchedSha256,
-    bytes: bytes.length,
-    match: reportedWasmHash === fetchedSha256,
-  };
+  return await withTimeout(async () => {
+    const instance = (await server.getContractInstance(contractId)) as unknown as {
+      executable?: { wasmHash?: unknown };
+    };
+    const reportedWasmHash = hashToHex(instance.executable?.wasmHash);
+    const wasm = await server.getContractWasmByContractId(contractId);
+    const bytes = toBytes(wasm);
+    const fetchedSha256 = await sha256Hex(bytes);
+    return {
+      reportedWasmHash,
+      fetchedSha256,
+      bytes: bytes.length,
+      match: reportedWasmHash === fetchedSha256,
+    };
+  });
 }
 
 /** The exact bytecode of a deployed contract, fetched from the chain. */
@@ -173,7 +180,9 @@ export async function fetchContractWasm(
   server: rpc.Server,
   contractId: string,
 ): Promise<Uint8Array> {
-  return toBytes(await server.getContractWasmByContractId(contractId));
+  return await withTimeout(async () => {
+    return toBytes(await server.getContractWasmByContractId(contractId));
+  });
 }
 
 function toBytes(value: unknown): Uint8Array {
@@ -216,18 +225,20 @@ export async function predictContractId(params: {
 
 /** Does the contract's own storage say `initialize` has already run? */
 export async function isInitialized(server: rpc.Server, guard: string): Promise<boolean> {
-  const instance = await server.getContractInstance(guard);
-  const decoded = JSON.parse(JSON.stringify(instance)) as {
-    storage?: Array<{ key?: { vec?: Array<{ symbol?: string; sym?: string }> }; val?: unknown }>;
-  };
-  for (const item of decoded.storage ?? []) {
-    const first = item.key?.vec?.[0];
-    if ((first?.symbol ?? first?.sym) !== "Initialized") continue;
-    const value = item.val as { bool?: boolean } | string | undefined;
-    if (typeof value === "string") return value.includes("true");
-    return value?.bool === true;
-  }
-  return false;
+  return await withTimeout(async () => {
+    const instance = await server.getContractInstance(guard);
+    const decoded = JSON.parse(JSON.stringify(instance)) as {
+      storage?: Array<{ key?: { vec?: Array<{ symbol?: string; sym?: string }> }; val?: unknown }>;
+    };
+    for (const item of decoded.storage ?? []) {
+      const first = item.key?.vec?.[0];
+      if ((first?.symbol ?? first?.sym) !== "Initialized") continue;
+      const value = item.val as { bool?: boolean } | string | undefined;
+      if (typeof value === "string") return value.includes("true");
+      return value?.bool === true;
+    }
+    return false;
+  });
 }
 
 /** True when a contract call failed because `initialize` had already run (#2). */
