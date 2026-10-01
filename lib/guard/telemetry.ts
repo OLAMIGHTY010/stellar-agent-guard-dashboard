@@ -270,7 +270,7 @@ export function guardEventId(event: {
   }
   let dataPart = "no-data";
   try {
-    dataPart = JSON.stringify(event.data, (_, v) => typeof v === "bigint" ? v.toString() : v);
+    dataPart = JSON.stringify(event.data, (_, v) => (typeof v === "bigint" ? v.toString() : v));
   } catch {}
   return `diag-${event.simulationIndex ?? "0"}-${event.topics?.[0] || "unknown"}-${dataPart}`;
 }

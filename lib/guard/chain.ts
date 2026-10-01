@@ -22,10 +22,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { NETWORK, PHASE1_ARTIFACT, READ_SOURCE_FALLBACK } from "./network.ts";
 import { guardStorageLedgerKeys, hashToHex, sha256, sha256Hex } from "./scval.ts";
-import {
-  type GuardStatus,
-  type PolicyConfig,
-} from "stellar-agent-guard-sdk";
+import { type GuardStatus, type PolicyConfig } from "stellar-agent-guard-sdk";
 import { withTimeout, DashboardReadError } from "./timeout.ts";
 
 export function createServer(rpcUrl: string = NETWORK.rpcUrl): rpc.Server {
@@ -61,7 +58,9 @@ export async function readContract<T = unknown>(
         fee: "100",
         networkPassphrase: NETWORK.passphrase,
       })
-        .addOperation(Operation.invokeContractFunction({ contract: contractId, function: fn, args }))
+        .addOperation(
+          Operation.invokeContractFunction({ contract: contractId, function: fn, args }),
+        )
         .setTimeout(30)
         .build();
       const simulation = await server.simulateTransaction(tx);
@@ -103,7 +102,7 @@ export function readPolicy(
   source?: string,
 ): Promise<ReadResult<PolicyConfig | null>> {
   return readContract<PolicyConfig | null>(server, guard, "policy", [], source, (retval) =>
-    (retval as any).type === "scvVoid" ? null : (scValToNative(retval) as PolicyConfig)
+    (retval as any).type === "scvVoid" ? null : (scValToNative(retval) as PolicyConfig),
   );
 }
 
@@ -143,7 +142,8 @@ export async function readPersistentEntry<T = unknown>(
         typeof entry.val.contractData === "function"
           ? entry.val.contractData()
           : entry.val.contractData;
-      const scval = typeof contractData?.val === "function" ? contractData.val() : contractData?.val;
+      const scval =
+        typeof contractData?.val === "function" ? contractData.val() : contractData?.val;
       if (!scval) return { ok: true, value: null };
       return { ok: true, value: scValToNative(scval) as T };
     });

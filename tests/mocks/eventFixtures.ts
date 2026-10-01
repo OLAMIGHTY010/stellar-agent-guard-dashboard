@@ -14,7 +14,6 @@
 
 import {
   GUARD_EVENT_TOPICS,
-  
   type GuardAuthDecision,
   type GuardEvent,
   type GuardReasonName,

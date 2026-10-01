@@ -31,9 +31,9 @@ describe("withTimeout", () => {
   });
 
   test("cleans up abort listener on completion (no double timeout/leak)", async () => {
-    // Testing leak-hygiene: test via controller-mock? 
-    // We can observe the signal's event listeners if it were exposed, 
-    // but AbortSignal doesn't expose a getter for listeners. 
+    // Testing leak-hygiene: test via controller-mock?
+    // We can observe the signal's event listeners if it were exposed,
+    // but AbortSignal doesn't expose a getter for listeners.
     // We can rely on the finally-removeEventListener code structure.
     let signalRef: AbortSignal | undefined;
     const result = await withTimeout(async (signal) => {
@@ -72,7 +72,7 @@ describe("withTimeout", () => {
       // 3. User clicks retry -> triggers another read
       const secondPromise = withTimeout(mockOperation, 10000);
       mock.timers.tick(10); // minimal tick to let microtasks flush
-      
+
       const value = await secondPromise;
       // 4. Recovery path succeeds -> value
       assert.equal(value, "recovered value");
