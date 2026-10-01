@@ -14,15 +14,18 @@
 
 import {
   GUARD_EVENT_TOPICS,
-  guardEventId,
+  
   type GuardAuthDecision,
   type GuardEvent,
   type GuardReasonName,
 } from "stellar-agent-guard-sdk";
 
+import type { TelemetryEvent } from "../../lib/guard/telemetry.ts";
+import { guardEventId } from "../../lib/guard/telemetry.ts";
+
 /** A `GuardEvent` before the SDK's identity fields are derived from its content. */
-export type BareGuardEvent = Omit<GuardEvent, "id" | "stream" | "observedAt"> &
-  Partial<Pick<GuardEvent, "id" | "stream" | "observedAt">>;
+export type BareGuardEvent = GuardEvent &
+  Partial<Pick<TelemetryEvent, "id" | "stream" | "observedAt">>;
 
 /**
  * Complete a descriptor-built event with the SDK's own identity fields.
@@ -35,10 +38,10 @@ export type BareGuardEvent = Omit<GuardEvent, "id" | "stream" | "observedAt"> &
 export function withIdentity<Bare extends BareGuardEvent>(
   bare: Bare,
   simulationIndex: number | null = null,
-): Bare & Pick<GuardEvent, "id" | "stream" | "observedAt"> {
+): TelemetryEvent {
   return {
     stream: bare.source === "ledger" ? "committed" : "diagnostic",
-    observedAt: null,
+    observedAt: "2025-01-01T00:00:00.000Z",
     ...bare,
     id:
       bare.id ??
@@ -51,7 +54,7 @@ export function withIdentity<Bare extends BareGuardEvent>(
         transactionHash: bare.transactionHash,
         simulationIndex,
       }),
-  };
+  } as unknown as TelemetryEvent;
 }
 
 export type MockEventKind =

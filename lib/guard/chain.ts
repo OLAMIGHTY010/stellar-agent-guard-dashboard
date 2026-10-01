@@ -21,15 +21,12 @@ import {
   type xdr as Xdr,
 } from "@stellar/stellar-sdk";
 import { NETWORK, PHASE1_ARTIFACT, READ_SOURCE_FALLBACK } from "./network.ts";
-import { guardStorageLedgerKeys, hashToHex, sha256 } from "./scval.ts";
+import { guardStorageLedgerKeys, hashToHex, sha256, sha256Hex } from "./scval.ts";
 import {
-  decodePolicy,
-  readPersistentEntry as readLedgerEntry,
-  sha256Hex,
   type GuardStatus,
   type PolicyConfig,
 } from "stellar-agent-guard-sdk";
-import { withTimeout } from "./timeout.ts";
+import { withTimeout, DashboardReadError } from "./timeout.ts";
 
 export function createServer(rpcUrl: string = NETWORK.rpcUrl): rpc.Server {
   return new rpc.Server(rpcUrl);
@@ -79,6 +76,7 @@ export async function readContract<T = unknown>(
       return { ok: true, value: decode(retval) };
     });
   } catch (error) {
+    if (error instanceof DashboardReadError) throw error;
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -105,7 +103,7 @@ export function readPolicy(
   source?: string,
 ): Promise<ReadResult<PolicyConfig | null>> {
   return readContract<PolicyConfig | null>(server, guard, "policy", [], source, (retval) =>
-    retval.type === "scvVoid" ? null : decodePolicy(retval),
+    (retval as any).type === "scvVoid" ? null : (scValToNative(retval) as PolicyConfig)
   );
 }
 
@@ -150,6 +148,7 @@ export async function readPersistentEntry<T = unknown>(
       return { ok: true, value: scValToNative(scval) as T };
     });
   } catch (error) {
+    if (error instanceof DashboardReadError) throw error;
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

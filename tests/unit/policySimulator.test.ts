@@ -48,7 +48,7 @@ function authEvent(
     contractId: "CTEST",
     ledger: rest.ledger ?? null,
     ledgerClosedAt: new Date(time).toISOString(),
-    observedAt: null,
+    observedAt: "2025-01-01T00:00:00.000Z",
     transactionHash: null,
     decision: {
       result: rest.decision ?? "allowed",
@@ -70,7 +70,7 @@ function otherEvent(kind: TelemetryEvent["kind"], time = NOW): TelemetryEvent {
     contractId: "CTEST",
     ledger: null,
     ledgerClosedAt: new Date(time).toISOString(),
-    observedAt: null,
+    observedAt: "2025-01-01T00:00:00.000Z",
     transactionHash: null,
     decision: null,
     data: {},

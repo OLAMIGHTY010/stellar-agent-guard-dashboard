@@ -11,13 +11,14 @@ import {
   pauseStream,
   resumeStream,
   type StreamBuffer,
+  type TelemetryEvent,
 } from "../../lib/guard/telemetry.ts";
 import { withIdentity } from "../mocks/eventFixtures.ts";
 
 const GUARD = "CAYJZT4XH5SWDXNR7MZJCCUBIDAT2KZDDUTZ7OZQEMKCPJGD4P3X4CU7";
 
 /** A distinct committed event per ledger number. */
-function ev(ledger: number, overrides: Partial<GuardEvent> = {}): GuardEvent {
+function ev(ledger: number, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
   return withIdentity({
     kind: "heartbeat",
     topic: "event_heartbeat",
@@ -32,9 +33,9 @@ function ev(ledger: number, overrides: Partial<GuardEvent> = {}): GuardEvent {
   });
 }
 
-const ledgers = (events: readonly GuardEvent[]) => events.map((event) => event.ledger);
+const ledgers = (events: readonly TelemetryEvent[]) => events.map((event) => event.ledger);
 
-function apply(buffer: StreamBuffer, batches: GuardEvent[][], limit?: number): StreamBuffer {
+function apply(buffer: StreamBuffer, batches: TelemetryEvent[][], limit?: number): StreamBuffer {
   return batches.reduce(
     (current, batch) => ingestEvents(current, batch, limit === undefined ? {} : { limit }),
     buffer,
@@ -147,10 +148,10 @@ describe("resume reconciliation", () => {
     // shape a cursor-polled feed plus re-pushed diagnostics produces.
     let seed = 42;
     const next = () => (seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31);
-    const batches: GuardEvent[][] = [];
+    const batches: TelemetryEvent[][] = [];
     let ledger = 1;
     for (let i = 0; i < 40; i++) {
-      const batch: GuardEvent[] = [];
+      const batch: TelemetryEvent[] = [];
       for (let n = next() % 4; n > 0; n--) batch.push(ev(ledger++));
       if (ledger > 3 && next() % 3 === 0) batch.push(ev(1 + (next() % (ledger - 1)))); // a repeat
       batches.push(batch);

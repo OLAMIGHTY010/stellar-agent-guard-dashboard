@@ -26,9 +26,14 @@ import {
   guardEventsFromDiagnostics,
   topicSymbols,
   type GuardEvent,
-  type PollResult,
 } from "stellar-agent-guard-sdk";
 import { scValToNative, xdr, type rpc } from "@stellar/stellar-sdk";
+
+export interface PollResult {
+  events: GuardEvent[];
+  cursor: string;
+  latestLedger: number;
+}
 import { NETWORK } from "./network.ts";
 import { withTimeout } from "./timeout.ts";
 import { estimateLedgerAtTime, type LedgerAnchor, type TimeRange } from "./ledgerTime.ts";
@@ -63,6 +68,9 @@ export interface RawEventXdr {
  */
 export type TelemetryEvent = GuardEvent & {
   raw?: RawEventXdr | null;
+  id: string;
+  stream: string;
+  observedAt: string;
 };
 
 /** One page of rows, carrying the SDK's own page fields (cursor, ledgers). */
@@ -232,15 +240,35 @@ export function refusedEventsFromDiagnostics(
   // The SDK skips events whose topics it does not recognise but keeps the
   // order of the rest, so walk both lists together and pair them by name topic.
   let cursor = 0;
-  return decoded.map((event) => {
+  return decoded.map((event, index) => {
+    const stream = "diagnostic";
+    const id = guardEventId({ ...event, topics: [event.topic], simulationIndex: index });
     while (cursor < normalised.length) {
       const candidate = normalised[cursor++];
       if (topicSymbols(candidate)[0] === event.topic) {
-        return { ...event, observedAt, raw: diagnosticXdr(candidate) };
+        return { ...event, observedAt, id, stream, raw: diagnosticXdr(candidate) };
       }
     }
-    return { ...event, observedAt, raw: null };
+    return { ...event, observedAt, id, stream, raw: null };
   });
+}
+
+/**
+ * Generate a stable identity for an event, replacing the SDK's old `guardEventId`.
+ */
+export function guardEventId(event: {
+  source: "ledger" | "diagnostic";
+  topics?: string[];
+  data?: unknown;
+  contractId?: string | null;
+  ledger?: number | null;
+  transactionHash?: string | null;
+  simulationIndex?: number | null;
+}): string {
+  if (event.source === "ledger" && event.ledger && event.transactionHash) {
+    return `${event.ledger}-${event.transactionHash}-${event.topics?.[0] || "unknown"}`;
+  }
+  return `diag-${event.simulationIndex ?? Date.now()}-${event.topics?.[0] || "unknown"}`;
 }
 
 /**
@@ -260,6 +288,8 @@ export function attachLedgerXdr(
   const observedAt = new Date().toISOString();
   let cursor = 0;
   return decoded.map((event) => {
+    const stream = "committed";
+    const id = guardEventId({ ...event, topics: [event.topic] });
     while (cursor < raw.length) {
       const candidate = raw[cursor++]!;
       if (
@@ -270,6 +300,8 @@ export function attachLedgerXdr(
         return {
           ...event,
           observedAt,
+          id,
+          stream,
           raw: {
             eventId: candidate.id,
             topicXdr: candidate.topic.map((topic) => topic.toXDR("base64")),
@@ -280,7 +312,7 @@ export function attachLedgerXdr(
         };
       }
     }
-    return { ...event, observedAt, raw: null };
+    return { ...event, observedAt, id, stream, raw: null };
   });
 }
 
