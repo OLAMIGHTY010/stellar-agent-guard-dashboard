@@ -268,7 +268,11 @@ export function guardEventId(event: {
   if (event.source === "ledger" && event.ledger && event.transactionHash) {
     return `${event.ledger}-${event.transactionHash}-${event.topics?.[0] || "unknown"}`;
   }
-  return `diag-${event.simulationIndex ?? Date.now()}-${event.topics?.[0] || "unknown"}`;
+  let dataPart = "no-data";
+  try {
+    dataPart = JSON.stringify(event.data, (_, v) => typeof v === "bigint" ? v.toString() : v);
+  } catch {}
+  return `diag-${event.simulationIndex ?? "0"}-${event.topics?.[0] || "unknown"}-${dataPart}`;
 }
 
 /**

@@ -83,7 +83,7 @@ describe("live ingest", () => {
       data: { at: 18_446_744_073_709_551_615n },
     });
     const small = ev(5, { source: "diagnostic", transactionHash: null, data: { at: 1n } });
-    assert.ok(max.id.startsWith("diag:"), "a diagnostic id is derived from the event's content");
+    assert.ok(max.id.startsWith("diag-"), "a diagnostic id is derived from the event's content");
     assert.notEqual(max.id, small.id, "different decoded data is a different event");
     assert.equal(
       max.id,
