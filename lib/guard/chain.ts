@@ -102,7 +102,7 @@ export function readPolicy(
   source?: string,
 ): Promise<ReadResult<PolicyConfig | null>> {
   return readContract<PolicyConfig | null>(server, guard, "policy", [], source, (retval) =>
-    (retval as any).type === "scvVoid" ? null : (scValToNative(retval) as PolicyConfig),
+    retval.type === "scvVoid" ? null : (scValToNative(retval) as PolicyConfig),
   );
 }
 
