@@ -56,6 +56,39 @@ export function ScopeNotice({ compact = false }: { compact?: boolean }) {
   );
 }
 
+/**
+ * The warning tier: one prominent banner for a state that is *safe* but not
+ * doing what the operator probably assumes it is doing.
+ *
+ * Established here by the default-deny status pass (issue #25) and shared, so
+ * the telemetry feed's per-row severity (issue #26) and the pending-status
+ * surfaces reuse one set of tokens rather than each inventing a red. `tier`
+ * picks the intensity: `warn` for "working as designed, read this", `danger` for
+ * "frozen/refused, act now" — the same two tiers as `.notice` and `.error`.
+ *
+ * `role="status"` announces it politely rather than interrupting: a state that
+ * is already true when the page loads is context, not an event.
+ */
+export function WarningBanner({
+  tier = "warn",
+  title,
+  children,
+  action,
+}: {
+  tier?: "warn" | "danger";
+  title: string;
+  children?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className={`notice${tier === "danger" ? " danger" : ""}`} data-tier={tier} role="status">
+      <strong>{title}</strong>
+      {children}
+      {action}
+    </div>
+  );
+}
+
 export function ErrorBlock({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="error">
@@ -63,6 +96,75 @@ export function ErrorBlock({ title, detail }: { title: string; detail: string })
       <span className="mono">{detail}</span>
     </div>
   );
+}
+
+/**
+ * A read's label as a DOM-safe test id slug: `"status()"` → `"status-"`.
+ */
+function readSlug(label: string): string {
+  return label.replace(/[^a-z0-9]+/gi, "-");
+}
+
+/**
+ * Render a read's value, or its failure — with a retry that re-invokes only
+ * that read.
+ *
+ * There is no third branch on purpose: a read that did not succeed has no value
+ * to show, and substituting a zero would make an outage indistinguishable from a
+ * genuinely empty policy. While a retry is in flight the retry button is
+ * replaced by a status line — one re-read at a time, and a failing retry is
+ * never a dead end because the button comes back with the error.
+ */
+export function ReadWithRetry<T>({
+  result,
+  label,
+  onRetry,
+  retrying,
+  render,
+}: {
+  result: ReadResult<T>;
+  label: string;
+  onRetry: () => void;
+  retrying: boolean;
+  render: (value: T) => ReactNode;
+}) {
+  if (!result.ok) {
+    return (
+      <div className="error retryable" data-testid={`retryable-${readSlug(label)}`} role="alert">
+        <span className="t">{`${label}: read failed`}</span>
+        <span className="mono">{result.error}</span>
+        {retrying ? (
+          <span className="tiny" role="status">
+            Retrying…
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="secondary"
+            aria-label={`Retry ${label} fetch`}
+            onClick={onRetry}
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    );
+  }
+  return <>{render(result.value)}</>;
+}
+
+/**
+ * The same read-with-retry component under the name call sites use when they
+ * are talking about the retry affordance itself; identical props.
+ */
+export const RetryableRead = ReadWithRetry;
+
+/**
+ * Inline pending state for one retried read, so the retried field can show
+ * progress without resetting the panels around it.
+ */
+export function ReadSkeleton({ label }: { label: string }) {
+  return <div className="skeleton-row" data-testid={`skeleton-${label}`} aria-hidden="true" />;
 }
 
 /**
@@ -159,12 +261,27 @@ export function AddressText({
   );
 }
 
-export function relativeTime(iso: string | null): string {
-  if (!iso) return "never";
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  return `${Math.round(seconds / 3600)}h ago`;
+import { formatTimeAgo } from "../lib/guard/time.ts";
+
+export function TimeAgo({ iso, suffix = "" }: { iso: string | null; suffix?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!iso) return <span>never</span>;
+
+  const ts = Math.floor(new Date(iso).getTime() / 1000);
+  const nowSecs = Math.floor(now / 1000);
+  const rel = formatTimeAgo(ts, nowSecs);
+
+  return (
+    <time dateTime={iso} title={iso} className="timeago">
+      {rel}
+      {suffix}
+    </time>
+  );
 }
 
 /**
