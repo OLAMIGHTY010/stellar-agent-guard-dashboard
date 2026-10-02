@@ -64,9 +64,6 @@ export interface RawEventXdr {
  */
 export type TelemetryEvent = GuardEvent & {
   raw?: RawEventXdr | null;
-  id: string;
-  stream: string;
-  observedAt: string;
 };
 
 /** One page of rows, carrying the SDK's own page fields (cursor, ledgers). */

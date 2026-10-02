@@ -81,12 +81,14 @@ export async function readContract<T = unknown>(
   }
 }
 
-export function readStatus(
+export async function readStatus(
   server: rpc.Server,
   guard: string,
   source?: string,
 ): Promise<ReadResult<GuardStatus>> {
-  return readContract<GuardStatus>(server, guard, "status", [], source);
+  return await withTimeout(async () => {
+    return readContract<GuardStatus>(server, guard, "status", [], source);
+  });
 }
 
 /**
