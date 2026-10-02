@@ -1,33 +1,36 @@
 import assert from "node:assert/strict";
-import { test, describe, mock } from "node:test";
+import { test, describe, mock, beforeEach, afterEach } from "node:test";
 import { withTimeout, DashboardReadError } from "../../lib/guard/timeout.ts";
 import { createServer, readStatus } from "../../lib/guard/chain.ts";
 import { GuardFeed } from "../../lib/guard/telemetry.ts";
 
 describe("withTimeout", () => {
+  beforeEach(() => {
+    mock.timers.enable();
+  });
+
+  afterEach(() => {
+    mock.timers.reset();
+  });
+
   test("returns the operation result if it completes before the timeout", async () => {
     const result = await withTimeout(async () => "success", 100);
     assert.equal(result, "success");
   });
 
   test("throws DashboardReadError if the operation takes longer than the timeout", async () => {
-    mock.timers.enable();
-    try {
-      const operation = async (signal: AbortSignal) => {
-        return new Promise((resolve) => setTimeout(() => resolve("late"), 20000));
-      };
+    const operation = async (signal: AbortSignal) => {
+      return new Promise((resolve) => setTimeout(() => resolve("late"), 20000));
+    };
 
-      const promise = withTimeout(operation, 10000);
-      mock.timers.tick(10000);
+    const promise = withTimeout(operation, 10000);
+    mock.timers.tick(10000);
 
-      await assert.rejects(promise, (err) => {
-        assert(err instanceof DashboardReadError);
-        assert.equal(err.message, "Read timed out after 10000ms");
-        return true;
-      });
-    } finally {
-      mock.timers.reset();
-    }
+    await assert.rejects(promise, (err) => {
+      assert(err instanceof DashboardReadError);
+      assert.equal(err.message, "Read timed out after 10000ms");
+      return true;
+    });
   });
 
   test("cleans up abort listener on completion (no double timeout/leak)", async () => {
@@ -48,7 +51,6 @@ describe("withTimeout", () => {
   });
 
   test("timeout-recovery lifecycle test (simulating UI composition)", async () => {
-    mock.timers.enable();
     let attempts = 0;
 
     const mockOperation = async () => {
@@ -62,23 +64,19 @@ describe("withTimeout", () => {
       }
     };
 
-    try {
-      // 1. First read hangs -> typed error
-      const firstPromise = withTimeout(mockOperation, 10000);
-      mock.timers.tick(10000);
-      await assert.rejects(firstPromise, DashboardReadError);
+    // 1. First read hangs -> typed error
+    const firstPromise = withTimeout(mockOperation, 10000);
+    mock.timers.tick(10000);
+    await assert.rejects(firstPromise, DashboardReadError);
 
-      // 2. The error state is reached (mocking the error-block rendering).
-      // 3. User clicks retry -> triggers another read
-      const secondPromise = withTimeout(mockOperation, 10000);
-      mock.timers.tick(10); // minimal tick to let microtasks flush
+    // 2. The error state is reached (mocking the error-block rendering).
+    // 3. User clicks retry -> triggers another read
+    const secondPromise = withTimeout(mockOperation, 10000);
+    mock.timers.tick(10); // minimal tick to let microtasks flush
 
-      const value = await secondPromise;
-      // 4. Recovery path succeeds -> value
-      assert.equal(value, "recovered value");
-      assert.equal(attempts, 2);
-    } finally {
-      mock.timers.reset();
-    }
+    const value = await secondPromise;
+    // 4. Recovery path succeeds -> value
+    assert.equal(value, "recovered value");
+    assert.equal(attempts, 2);
   });
 });

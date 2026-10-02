@@ -33,8 +33,12 @@ export async function withTimeout<T>(
 
   controller.signal.addEventListener("abort", onAbort);
 
+  const opPromise = operation(controller.signal);
+  // Prevent unhandled rejections if the operation fails after the timeout fires
+  opPromise.catch(() => {});
+
   try {
-    return await Promise.race([operation(controller.signal), timeoutPromise]);
+    return await Promise.race([opPromise, timeoutPromise]);
   } finally {
     clearTimeout(id);
     controller.signal.removeEventListener("abort", onAbort);
