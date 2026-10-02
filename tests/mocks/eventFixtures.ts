@@ -17,14 +17,17 @@ import {
   type GuardAuthDecision,
   type GuardEvent,
   type GuardReasonName,
+  guardEventId,
 } from "stellar-agent-guard-sdk";
 
 import type { TelemetryEvent } from "../../lib/guard/telemetry.ts";
-import { guardEventId } from "../../lib/guard/telemetry.ts";
 
 /** A `GuardEvent` before the SDK's identity fields are derived from its content. */
-export type BareGuardEvent = GuardEvent &
-  Partial<Pick<TelemetryEvent, "id" | "stream" | "observedAt">>;
+export type BareGuardEvent = Omit<GuardEvent, "id" | "stream" | "observedAt"> & {
+  id?: string;
+  stream?: string;
+  observedAt?: string | null;
+};
 
 /**
  * Complete a descriptor-built event with the SDK's own identity fields.
@@ -39,9 +42,9 @@ export function withIdentity<Bare extends BareGuardEvent>(
   simulationIndex: number | null = null,
 ): TelemetryEvent {
   return {
-    stream: bare.source === "ledger" ? "committed" : "diagnostic",
-    observedAt: "2025-01-01T00:00:00.000Z",
     ...bare,
+    stream: bare.stream ?? (bare.source === "ledger" ? "committed" : "diagnostic"),
+    observedAt: bare.observedAt ?? "2025-01-01T00:00:00.000Z",
     id:
       bare.id ??
       guardEventId({

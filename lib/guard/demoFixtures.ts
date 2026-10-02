@@ -25,8 +25,8 @@
  */
 
 import type { GuardEvent, GuardStatus, PolicyConfig, ProtocolRule } from "stellar-agent-guard-sdk";
-import { GUARD_EVENT_TOPICS } from "stellar-agent-guard-sdk";
-import { guardEventId, type TelemetryEvent } from "./telemetry.ts";
+import { GUARD_EVENT_TOPICS, guardEventId } from "stellar-agent-guard-sdk";
+import type { TelemetryEvent } from "./telemetry.ts";
 import type { GuardSnapshot } from "./guardOps.ts";
 import type { WindowState, WasmIdentity } from "./chain.ts";
 import type { GuardInstance } from "./instance.ts";

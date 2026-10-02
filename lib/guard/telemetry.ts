@@ -26,14 +26,10 @@ import {
   guardEventsFromDiagnostics,
   topicSymbols,
   type GuardEvent,
+  type PollResult,
+  guardEventId,
 } from "stellar-agent-guard-sdk";
 import { scValToNative, xdr, type rpc } from "@stellar/stellar-sdk";
-
-export interface PollResult {
-  events: GuardEvent[];
-  cursor: string;
-  latestLedger: number;
-}
 import { NETWORK } from "./network.ts";
 import { withTimeout } from "./timeout.ts";
 import { estimateLedgerAtTime, type LedgerAnchor, type TimeRange } from "./ledgerTime.ts";
@@ -254,28 +250,6 @@ export function refusedEventsFromDiagnostics(
 }
 
 /**
- * Generate a stable identity for an event, replacing the SDK's old `guardEventId`.
- */
-export function guardEventId(event: {
-  source: "ledger" | "diagnostic";
-  topics?: string[];
-  data?: unknown;
-  contractId?: string | null;
-  ledger?: number | null;
-  transactionHash?: string | null;
-  simulationIndex?: number | null;
-}): string {
-  if (event.source === "ledger" && event.ledger && event.transactionHash) {
-    return `${event.ledger}-${event.transactionHash}-${event.topics?.[0] || "unknown"}`;
-  }
-  let dataPart = "no-data";
-  try {
-    dataPart = JSON.stringify(event.data, (_, v) => (typeof v === "bigint" ? v.toString() : v));
-  } catch {}
-  return `diag-${event.simulationIndex ?? "0"}-${event.topics?.[0] || "unknown"}-${dataPart}`;
-}
-
-/**
  * Pair decoded ledger events with the raw page they came from.
  *
  * The listener drops unrecognised topics but keeps the order of the rest, so a
@@ -293,7 +267,7 @@ export function attachLedgerXdr(
   let cursor = 0;
   return decoded.map((event) => {
     const stream = "committed";
-    const id = guardEventId({ ...event, topics: [event.topic] });
+    const id = guardEventId({ ...event, topics: [event.topic], simulationIndex: null });
     while (cursor < raw.length) {
       const candidate = raw[cursor++]!;
       if (
