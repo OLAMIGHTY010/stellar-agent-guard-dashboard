@@ -31,6 +31,7 @@ import { historyShortcut, useHistoryState } from "../lib/guard/useHistoryState.t
 import { usePwaActivity } from "../lib/guard/usePwaActivity.ts";
 import { computePolicyDiff, type PolicyDiff } from "../lib/guard/policyDiff.ts";
 import { PolicyDiffModal } from "./PolicyDiffModal.tsx";
+import { PolicyComparisonModal } from "./PolicyComparisonModal.tsx";
 import type { InvokeResult } from "../lib/guard/submit.ts";
 import { previewAuthorizationSummary } from "../lib/guard/submit.ts";
 import type { AuthorizationContext } from "../lib/guard/authorizationSummary.ts";
@@ -211,6 +212,7 @@ export function PolicyForm() {
   // change event on the select.
   const [pendingPreset, setPendingPreset] = useState<PolicyPreset | null>(null);
   const [pendingPolicyImport, setPendingPolicyImport] = useState<PolicyImportApproval | null>(null);
+  const [showProfileComparison, setShowProfileComparison] = useState(false);
   // ── Which guard everything on this form belongs to ──────────────────────
   // The active guard is shared application context: the operator, another tab or
   // a link can change it while a draft, an approval or a write is still live.
@@ -841,6 +843,15 @@ export function PolicyForm() {
           <button className="secondary" type="button" onClick={exportPolicyJson} disabled={busy}>
             Export Policy JSON
           </button>
+          <button
+            className="secondary"
+            type="button"
+            onClick={() => setShowProfileComparison(true)}
+            disabled={busy}
+            title="Compare policy profiles side-by-side without applying"
+          >
+            Compare Profiles
+          </button>
           <input
             ref={policyJsonInput}
             type="file"
@@ -1461,6 +1472,18 @@ export function PolicyForm() {
           expectedAccount={wallet?.address}
           onConfirm={() => void runInstall(false, pendingApproval)}
           onCancel={() => setPendingApproval(null)}
+        />
+      )}
+
+      {showProfileComparison && (
+        <PolicyComparisonModal
+          currentDraftConfig={validation.ok ? validation.config : null}
+          installedConfig={
+            snapshot?.policy.ok && snapshot.policy.value !== null ? snapshot.policy.value : null
+          }
+          activeGuard={guard}
+          activeNetwork={NETWORK.name}
+          onClose={() => setShowProfileComparison(false)}
         />
       )}
     </div>

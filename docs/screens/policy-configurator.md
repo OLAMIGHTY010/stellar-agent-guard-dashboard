@@ -25,3 +25,8 @@ Interactive no-code form for configuring smart account guardrails:
   address, network and admin account the signature will cover, derived from the transaction about to be
   simulated ([authorization-summary.md](authorization-summary.md)). An install with no summary to show
   is never offered as a signing prompt.
+- **Side-by-Side Policy Profile Comparison**: Inspect and compare two policy profiles side-by-side without applying either and without RPC writes:
+  - **Profile Parity**: Select and compare between presets (e.g., Strict Micro-Agent vs Standard DeFi Bot), the current editor draft, or the live installed on-chain policy.
+  - **Field Differences**: Highlights changed, added, removed, and unchanged fields with visual markers and status badges, with an optional filter to show differences only.
+  - **Network Mismatch Detection**: Automatically detects when comparing profiles configured for different networks (e.g. Testnet vs Mainnet) and displays a prominent warning to prevent cross-network contract address contamination.
+  - **Strictly Non-Custodial & Read-Only**: Performs zero state mutations, zero transaction signing, and zero RPC calls.
