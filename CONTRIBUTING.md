@@ -4,6 +4,16 @@
 that holds no keys and runs no server code, so most changes are UI, client-side Soroban
 RPC, or tests.
 
+## Artifact Pin Changes
+
+> **Changing the pinned WASM identity affects deployment trust and requires coordinated,
+> evidence-backed review.** Before opening a PR that modifies the pinned artifact, complete
+> the **Artifact Pin Change Checklist** in `docs/operations/artifact-pin-checklist.md` and
+> reference it in your PR description.
+
+All PRs that change the pinned artifact must satisfy every item in the checklist. Pull
+requests that do not will be returned for completion.
+
 ## First run (local development walkthrough)
 
 This is a pure client-side Next.js app: there is no backend, database or API route to
@@ -324,7 +334,11 @@ named exactly **`ci`**. The `ci` workflow runs typecheck, lint, the unit tests, 
 production build, a dedicated step that re-checks the enforcement-scope statement in
 `README.md` and `SPEC.md` against the canonical constant in `lib/guard/network.ts`
 (`tests/unit/scopeStatement.test.ts`), and the Playwright end-to-end suites
-(`npm run test:e2e`, headless Chromium against a mocked chain). Rewording the boundary fails CI, which is the
+(`npm run test:e2e`, headless Chromium against a mocked chain). That suite includes
+`tests/e2e/smoke.spec.ts`, which loads every primary route — `/`, `/configure`, `/deploy`,
+`/fleet` and `/panic` — without a wallet and fails on a page error or a hydration mismatch,
+plus a chain-unreachable case that asserts a failed read is surfaced rather than rendered as
+zeros. Rewording the boundary fails CI, which is the
 point — see [Enforcement scope](README.md#enforcement-scope--read-this-before-relying-on-the-caps).
 
 ## Keeping docs true to the code

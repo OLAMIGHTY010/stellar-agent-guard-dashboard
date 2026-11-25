@@ -3,10 +3,65 @@
 `TelemetryFeed` tails contract events from Soroban RPC:
 
 - Queries `getEvents` with `event_auth_checked` topic filter.
-- Decodes contract addresses, decision results (`allowed` or `blocked`), reason codes, and timestamps.
+- Shows the two kinds of value a row holds apart, because they are not equally
+  trustworthy. The chain's own bytes — `ledger`, `ledgerClosedAt`,
+  `transactionHash`, and the event XDR the feed keeps as `event.raw` — are
+  `raw`. The labels `stellar-agent-guard-sdk` concluded from the topic symbols —
+  `kind`, `decision`, `decision.reason`, `contractId` — are `decoded`. Each row
+  says so in one line under the event name,
+  `decoded by stellar-agent-guard-sdk 0.1.1 · 4 raw · 5 decoded · 0 unknown`, and
+  its tooltip names every unknown field along with what is missing.
+- A decoded label is the SDK's interpretation, not a value the event carried.
+  "Authorization decision" is `interpret()`'s reading of the symbol
+  `event_auth_checked`, and the symbol itself is rendered next to the label. A
+  topic the decoder has no label for is shown as `event_… (raw topic)` rather
+  than dressed up as a label.
+- Unknowns are shown as unknowns. A refusal whose reason the decoder did not get
+  reads `reason unknown` — never `blocked`, which is a decision, not a reason. A
+  row whose original bytes the feed could not pair with it counts `raw` as
+  unknown, because nothing on that row can be re-decoded independently. The
+  timestamp split is the one most worth reading: the Time cell shows
+  `ledgerClosedAt` (the chain's close) when the row has it and `observedAt`
+  (this console's clock) when it does not, and each is listed under its own
+  source.
+- The version in that line is a constant in `lib/guard/decodeProvenance.ts`, not
+  something the SDK publishes at runtime: `stellar-agent-guard-sdk` exposes no
+  version, and its `exports` map hides its own `package.json` from a browser
+  bundle. `tests/unit/decodeProvenance.test.ts` pins the constant against the
+  installed package's manifest, so the row cannot show a version that was not
+  the one that decoded it.
 - Color-coded badges highlight blocked transactions and policy violations in real-time.
 
+## Alert Delivery Guarantees & Non-Guarantees
+
+Client-side alerts (audio chimes, browser desktop notifications, and outbound webhooks) are **best-effort operator conveniences**, never authoritative monitoring or on-chain enforcement. The Soroban contract's on-chain `status()` and committed ledger events remain the sole source of truth.
+
+### Guarantees & Non-Guarantees
+
+1. **Browser Lifecycle**:
+   - Alerts only evaluate while this dashboard tab is open and actively polling. Closing the tab, suspending the browser, or background tab throttling stops polling and prevents alerts from firing.
+   - Missed events that occur while the tab is closed, offline, or paused are **not** queued or replayed on reconnect; review the Telemetry Feed and `status()` for missed history.
+2. **Browser Permissions & Audio Autoplay**:
+   - Browser notification permission (`granted`, `denied`, `default`, or `unsupported`) is controlled by the browser and may be revoked externally in site settings at any time.
+   - The dashboard checks live permission state without re-prompting automatically; if permission is revoked, the desktop channel immediately reports `blocked` / `needs permission` and clears any stale delivery-success state.
+   - Web Audio requires an explicit user gesture (clicking **Enable chime**) per tab session before audio can play.
+3. **Webhook Requirements & Secret Hygiene**:
+   - Webhooks are dispatched directly from the browser via HTTPS `POST` (plain `http://` is permitted only on `localhost`). The destination server must allow this console's origin via CORS.
+   - Requests have a 10-second timeout and are **never retried silently** in the background. Only guards explicitly scoped for the active network are dispatched.
+   - URLs containing embedded credentials (`user:pass@`) or secret-bearing query parameters (`?token=`, `?api_key=`, `?secret=`, etc.) are rejected with a redacted preview and **cannot be stored** in `localStorage`.
+4. **Quiet Hours & Class Filtering**:
+   - Events suppressed by unticked alert classes or active quiet hours are still marked as seen so they do not replay when quiet hours end or a class is re-enabled.
+5. **Consolidated Channel Health**:
+   - Browser notifications, audio chimes, and webhook dispatch report readiness, failure causes, and focused recovery steps independently of telemetry feed health.
+
+### Operator Verification Steps
+
+1. **Audio Chime**: Click **Enable chime** and confirm the channel health badge reads `Audio chime: ready` and you hear the test tone.
+2. **Browser Notifications**: Click **Enable notifications**, accept the browser prompt, and confirm `Browser notifications: ready`. If previously denied, re-allow notifications in browser site settings.
+3. **Webhook Dispatch**: Open **Webhook alerts**, enter a credential-free `https://` URL, scope at least one guard for the active network, and click **Test webhook** to confirm `Test webhook delivered` and `Webhook dispatch: ready`.
+
 ## Row severity tiers
+
 
 Rows are tiered so a block is findable by looking, not by reading every row. The tier
 rides on the `<tr>` as a class and a `data-severity` attribute; `data-stream` carries the
@@ -14,17 +69,80 @@ SDK's stream discriminator (`ledger` or `diagnostic`).
 
 | Tier | Row | Marker | Wording already in the row |
 | --- | --- | --- | --- |
-| `blocked` | The guard refused the call | danger left rule + tinted surface | the reason badge, e.g. `per_tx_cap_exceeded` |
+| `blocked` | The guard refused the call | danger left rule + tinted surface | the reason badge, e.g. `per_tx_cap_exceeded`, or `reason unknown` when no reason was decoded |
 | `allowed` | The guard authorized the call | none — deliberately neutral | the `allowed` badge |
 | `diagnostic` | A refused-simulation row with no decision of its own | warn left rule | the `diagnostic` source chip |
-| `lifecycle` | Heartbeat / admin event, no decision made | none — deliberately neutral | the event name, and `—` for the decision |
+| `lifecycle` | Heartbeat / admin event, no decision made | none — deliberately neutral | the event name, and `—` for the decision, which the row's provenance line counts as an unknown |
 
 Severity is derived from the fields the decoder already produced — `decision.result` and
 `event.source` (`stellar-agent-guard-sdk`, `dist/telemetry.d.ts`) — so no topic or reason
-string is parsed per render, and every tier is stated in words as well as in colour.
+string is parsed per render, and every tier is stated in words as well as in colour. The
+provenance line beside it comes from `lib/guard/decodeProvenance.ts`, which reads the same
+decoded fields and reports which of them are present.
 
 There is **no sound**. An operator console runs unattended and muted, and a noise that can
 only be silenced in the tab that made it is not an alert.
+
+## Per-event-class alert selection
+
+The rows above are silent because the feed itself makes no noise. Sound, when there is any,
+comes from the opt-in alerts panel ([`components/TelemetryAlerts.tsx`](../../components/TelemetryAlerts.tsx)),
+and it is two separate choices (issue #492), not one switch. The **channel** — the Web Audio
+chime, the browser notification, or both — is opt-in and both default to off. Which **event
+classes** may use a channel that is on is a per-class list, ticked one at a time under
+"Alert me for":
+
+| Class | Event it covers |
+| --- | --- |
+| Blocked calls | the guard refused a call — an unauthorized transfer or an unexpected contract call |
+| Account frozen | an admin froze the account |
+| Policy revoked | a policy was revoked |
+
+All three start ticked, so a channel an operator has switched on alerts for everything
+security-critical without further configuration; narrowing it down is opt-out. The selection is
+stored with the channels under `stellar-agent-guard-dashboard.alerts.v1`, and a record written
+before the choice existed — one with no class list at all — keeps every class enabled rather than
+disarming somebody who had alerts on. Anything that is not one of the three classes (heartbeats,
+allowed decisions, the policy installs this console makes) never interrupts, whatever the list says.
+
+The two choices are also reported separately. With every class unticked a channel is still on and
+nothing can ever fire, so the panel says nothing will alert and the pill reads `off` rather than
+`armed` — the rule that a control must not imply protection the tab cannot deliver. Quiet hours,
+permission prompts and the browser's own refusals are each reported on their own line for the same
+reason. Behaviour and its failure cases are covered by
+[`tests/unit/alertClassPreferences.test.ts`](../../tests/unit/alertClassPreferences.test.ts) and
+[`tests/unit/telemetryAlertsPanel.test.ts`](../../tests/unit/telemetryAlertsPanel.test.ts).
+
+## Quiet hours
+
+A console left open overnight is a console whose alerts get muted at the browser level, and a denied
+permission is permanent in a way a switch is not. So the panel can hold its own noise back for part of
+the day (issue #494). Four fields, all of them the operator's:
+
+| Field               | What it is                                                        |
+| ------------------- | ----------------------------------------------------------------- |
+| On or off           | off until asked — an upgrade never silences anybody by itself     |
+| `From` and `Until`  | local wall clock, `HH:MM`; the window wraps past midnight, and two equal clocks mean the whole day |
+| Zone                | an IANA name, because `22:00` means a different hour in two offices |
+| Interrupt anyway    | the classes that still alert inside the window (`frozen` and `policy revoked` by default) |
+
+The state line under the controls is what makes the setting checkable: it repeats the window, the zone
+it is being read in, the offset in force at this instant, and the local clock right now, and says whether
+this tab is currently holding anything back. On a day with a daylight-saving transition it adds that the
+local day is 23 or 25 hours long, so a wall-clock window that day runs an hour shorter or longer in real
+time than it looks. Evaluation is on the wall clock in the named zone, which is what makes both
+transitions fall out of the arithmetic: a `02:xx` window on a spring-forward day matches nothing, and the
+repeated `01:xx` on a fall-back day is quiet on both passes.
+
+What quiet hours do **not** do is the point of the disclosure. They act on this tab's chime and its
+notifications, and on nothing else: the guard keeps enforcing, the ledger keeps recording, and the feed
+keeps showing every row, at every hour. A held-back alert is not saved up for the morning either — it is
+marked seen like any other, so switching quiet hours off never replays the night. An unusable zone name
+is reported and the window is read in UTC instead, and a schedule that cannot be read at all leaves the
+alert loud: the failure this panel will not produce is going quiet for a reason it never stated.
+Semantics and both DST boundaries are in
+[`lib/guard/quietHours.ts`](../../lib/guard/quietHours.ts) with
+[`tests/unit/quietHours.test.ts`](../../tests/unit/quietHours.test.ts).
 
 ## Pausing and resuming
 
